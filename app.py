@@ -2,63 +2,75 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 
-st.title("Funding by Sector and Year")
+st.set_page_config(page_title="Fair Trade Premium Spending", layout="wide")
 
-data = {
-    "Sector": [
-        "Farmer Support", "Health", "Education",
-        "Water & Sanitation", "Infrastructure", "Other"
-    ],
-    2024: [42997, 0, 1642, 0, 293, 2287],
-    2023: [57462, 0, 27287, 0, 0, 248],
-    2022: [19388, 410, 33805, 1049, 331, 1373],
-    2021: [13247, 707, 33297, 1454, 0, 2986],
-    2020: [29053, 675, 25837, 0, 9949, 5001],
-    2019: [45584, 0, 8831, 0, 1777, 38514],
-    2018: [15787, 7708, 2432, 0, 6845, 29463],
-}
+st.title("Fair Trade Premium Spending Dashboard")
 
-df = pd.DataFrame(data)
+dropbox_url = "https://www.dropbox.com/scl/fi/ql944vw0bjdk883lj8vjq/Fair-Trade-Premium-Spending.xlsx?rlkey=1ov9apknt53iwwwz72jeuyiyw&st=h2tu1nvd&dl=1"
 
-year_cols = [col for col in df.columns if isinstance(col, int)]
+df = pd.read_excel(dropbox_url)
 
-selected_years = st.multiselect(
-    "Select years",
-    year_cols,
-    default=year_cols
-)
+# Clean data
+df = df.dropna(how="all")
+df.columns = df.columns.astype(str)
 
-filtered = df[["Sector"] + selected_years]
+# Rename first column to Sector
+df = df.rename(columns={df.columns[0]: "Sector"})
 
-st.dataframe(filtered, use_container_width=True)
+# Remove total row if present
+df = df[df["Sector"].astype(str).str.lower() != "total"]
 
-long_df = filtered.melt(
+# Convert wide data to long format
+long_df = df.melt(
     id_vars="Sector",
     var_name="Year",
     value_name="Amount"
 )
 
-fig = px.bar(
-    long_df,
+long_df["Year"] = pd.to_numeric(long_df["Year"], errors="coerce")
+long_df["Amount"] = pd.to_numeric(long_df["Amount"], errors="coerce").fillna(0)
+
+long_df = long_df.dropna(subset=["Year"])
+long_df["Year"] = long_df["Year"].astype(int)
+
+st.subheader("Data Table")
+st.dataframe(df, use_container_width=True)
+
+st.subheader("Funding Over Time")
+
+sector_options = ["All data"] + sorted(long_df["Sector"].dropna().unique())
+
+selected_sector = st.selectbox("Select data", sector_options)
+
+if selected_sector == "All data":
+    chart_df = long_df
+    title = "All Funding Over Time"
+    color = "Sector"
+else:
+    chart_df = long_df[long_df["Sector"] == selected_sector]
+    title = f"{selected_sector} Funding Over Time"
+    color = None
+
+fig = px.line(
+    chart_df,
     x="Year",
     y="Amount",
-    color="Sector",
-    title="Funding by Sector Over Time",
-    barmode="stack"
+    color=color,
+    markers=True,
+    title=title
 )
 
 st.plotly_chart(fig, use_container_width=True)
 
-sector = st.selectbox("Select a sector", df["Sector"])
+st.subheader("Funding by Year")
 
-sector_df = long_df[long_df["Sector"] == sector]
-
-line = px.line(
-    sector_df,
+bar_fig = px.bar(
+    long_df,
     x="Year",
     y="Amount",
-    markers=True,
-    title=f"{sector} Funding Over Time"
+    color="Sector",
+    title="Funding by Sector and Year",
+    barmode="stack"
 )
 
-st.plotly_chart(line, use_container_width=True)
+st.plotly_chart(bar_fig, use_container_width=True)
